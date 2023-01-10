@@ -1,0 +1,23 @@
+# 64-bit PowerShell
+# Run as System
+
+# Changeable values
+$Executable = "Executable.EXE"
+$url = "https://YOURURL.exe"
+
+# Check if the executable already exists on the system
+if (Test-Path -Path "C:\Users\Public\Desktop\$Executable" ) {
+
+    # If it exists, exit the script
+    exit
+}
+
+else {
+    
+    # File path for the downloaded executable
+    $FileName = "C:\Users\Public\Desktop\$Executable"
+
+    # Download Teamviewer QS
+    $wc = New-Object System.Net.WebClient
+    $wc.DownloadFile($url, $FileName)
+}
