@@ -1,0 +1,38 @@
+# Create 3 groups and add all Windows computers to them (include servers)
+
+# Connect to Azure AD
+Connect-AzureAD
+
+# Get all Windows devices
+$devices = Get-AzureADDevice -All 1 -Filter "startswith(DeviceOSType,'Windows')"
+
+# Calculate the number of devices per group
+$groupSize = [Math]::Ceiling($devices.Count / 3)
+
+# Create an array to store the group objects
+$groups = @()
+
+# Create the groups
+for ($i = 1; $i -le 3; $i++) {
+    $group = New-AzureADGroup -DisplayName "Windows Devices Group $i" -MailNickName "WindowsDevicesGroup$i" -SecurityEnabled $true -MailEnabled $false
+    $groups += $group
+}
+
+# Add the devices to the groups
+$index = 0
+foreach ($device in $devices) {
+    # Get the group to add the device to
+    $group = $groups[$index % 3]
+
+    # Add the device to the group as a member
+    Add-AzureADGroupMember -ObjectId $group.ObjectId -RefObjectId $device.ObjectId
+
+    # Increment the index
+    $index++
+}
+
+# Confirm that the devices have been added to the groups
+foreach ($group in $groups) {
+    $members = Get-AzureADGroupMember -ObjectId $group.ObjectId
+    Write-Output "Number of members in group '$($group.DisplayName)': $($members.Count)"
+}
