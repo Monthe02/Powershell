@@ -1,0 +1,40 @@
+# Create 3 groups and add all users to them
+
+# Connect to Azure AD
+Connect-AzureAD
+
+# Get all users in Azure AD
+$users = Get-AzureADUser -Filter "UserType eq 'Member'" -All $true
+
+# Exit the script if there are no users in Azure AD
+if (!$users) {
+    Write-Output "No users found in Azure AD"
+}
+
+# Create an array to store the group objects
+$groups = @()
+
+# Create the groups
+for ($i = 1; $i -le 3; $i++) {
+    $group = New-AzureADGroup -DisplayName "Group $i" -SecurityEnabled $true -MailEnabled $false -MailNickName "group$i"
+    $groups += $group
+}
+
+# Add the users to the groups
+$index = 0
+foreach ($user in $users) {
+    # Get the group to add the user to
+    $group = $groups[$index % 3]
+
+    # Add the user to the group
+    Add-AzureADGroupMember -ObjectId $group.ObjectId -RefObjectId $user.ObjectId
+
+    # Increment the index
+    $index++
+}
+
+# Confirm that the users have been added to the groups
+foreach ($group in $groups) {
+    $members = Get-AzureADGroupMember -ObjectId $group.ObjectId
+    Write-Output "Number of members in group '$($group.DisplayName)': $($members.Count)"
+}
