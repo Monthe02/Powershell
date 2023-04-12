@@ -1,28 +1,58 @@
-# Create 3 groups and add all Windows computers to them (include servers)
+# Create 5 groups and add all Windows computers to them (include servers)
+
+# Define the percentages for each group
+$group1Percentage = 0.05
+$group2Percentage = 0.10
+$group3Percentage = 0.20
+$group4Percentage = 0.30
+$group5Percentage = 0.35
 
 # Connect to Azure AD
-Connect-AzureAD
+#Connect-AzureAD
 
 # Get all Windows devices
 $devices = Get-AzureADDevice -All 1 -Filter "startswith(DeviceOSType,'Windows')"
 
 # Calculate the number of devices per group
-$groupSize = [Math]::Ceiling($devices.Count / 3)
+$group1Size = [Math]::Ceiling($devices.Count * $group1Percentage)
+$group2Size = [Math]::Ceiling($devices.Count * $group2Percentage)
+$group3Size = [Math]::Ceiling($devices.Count * $group3Percentage)
+$group4Size = [Math]::Ceiling($devices.Count * $group4Percentage)
+$group5Size = [Math]::Ceiling($devices.Count * $group5Percentage)
 
 # Create an array to store the group objects
 $groups = @()
 
 # Create the groups
-for ($i = 1; $i -le 3; $i++) {
-    $group = New-AzureADGroup -DisplayName "Windows Devices Group $i" -MailNickName "WindowsDevicesGroup$i" -SecurityEnabled $true -MailEnabled $false
-    $groups += $group
-}
+$group1 = New-AzureADGroup -DisplayName "Windows Devices Group 1" -MailNickName "WindowsDevicesGroup1" -SecurityEnabled $true -MailEnabled $false
+$groups += $group1
+$group2 = New-AzureADGroup -DisplayName "Windows Devices Group 2" -MailNickName "WindowsDevicesGroup2" -SecurityEnabled $true -MailEnabled $false
+$groups += $group2
+$group3 = New-AzureADGroup -DisplayName "Windows Devices Group 3" -MailNickName "WindowsDevicesGroup3" -SecurityEnabled $true -MailEnabled $false
+$groups += $group3
+$group4 = New-AzureADGroup -DisplayName "Windows Devices Group 4" -MailNickName "WindowsDevicesGroup4" -SecurityEnabled $true -MailEnabled $false
+$groups += $group4
+$group5 = New-AzureADGroup -DisplayName "Windows Devices Group 5" -MailNickName "WindowsDevicesGroup5" -SecurityEnabled $true -MailEnabled $false
+$groups += $group5
 
 # Add the devices to the groups
 $index = 0
 foreach ($device in $devices) {
-    # Get the group to add the device to
-    $group = $groups[$index % 3]
+    if ($index -lt $group1Size) {
+        $group = $group1
+    }
+    elseif ($index -lt ($group1Size + $group2Size)) {
+        $group = $group2
+    }
+    elseif ($index -lt ($group1Size + $group2Size + $group3Size)) {
+        $group = $group3
+    }
+    elseif ($index -lt ($group1Size + $group2Size + $group3Size + $group4Size)) {
+        $group = $group4
+    }
+    else {
+        $group = $group5
+    }
 
     # Add the device to the group as a member
     Add-AzureADGroupMember -ObjectId $group.ObjectId -RefObjectId $device.ObjectId
