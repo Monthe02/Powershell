@@ -1,0 +1,222 @@
+$clientID = "clientID"
+$clientSecret = "Value"
+$tenantID = "tenantID"
+
+$MailSender = "your.email@address.com"
+
+# Install Module
+# Install-Module MSRCSecurityUpdates -Force
+
+# Import Module
+# Import-Module MSRCSecurityUpdates
+
+# Connect to GRAPH API and get access token
+$tokenBody = @{
+    Grant_Type    = "client_credentials"
+    Scope         = "https://graph.microsoft.com/.default"
+    Client_Id     = $clientId
+    Client_Secret = $clientSecret
+}
+$tokenResponse = Invoke-RestMethod -Uri "https://login.microsoftonline.com/$tenantID/oauth2/v2.0/token" -Method POST -Body $tokenBody
+$headers = @{
+    "Authorization" = "Bearer $($tokenResponse.access_token)"
+    "Content-type"  = "application/json"
+}
+
+# Compose email message
+#$Month = Get-Date -Format 'yyyy-MMM'
+$Month = '2023-Apr'
+$ClientOS_Type = "Windows 11 Version 22H2 for x64-based Systems"
+$id = Get-MsrcCvrfDocument -ID $Month
+
+# Get critical & important
+$ProductName = Get-MsrcCvrfAffectedSoftware -Vulnerability $id.Vulnerability -ProductTree $id.ProductTree | Where-Object { $_.Severity -in 'Critical', 'Important' -and ($_.FullProductName -match $ClientOS_Type) }
+
+# Get only critical 
+$ProductName = Get-MsrcCvrfAffectedSoftware -Vulnerability $id.Vulnerability -ProductTree $id.ProductTree | Where-Object { $_.Severity -eq 'Critical' -and $_.Importance -ne 'Important' -and ($_.FullProductName -match $ClientOS_Type) }
+
+$Css="<style>
+body {
+    font-family: cursive;
+    font-size: 14px;
+    color: #000000;
+    background: #FEFEFE;
+}
+#title{
+    color:#000000;
+    font-size: 30px;
+    font-weight: bold;
+    height: 50px;
+    margin-left: 0px;
+    padding-top: 10px;
+}
+
+#subtitle{
+    font-size: 16px;
+    margin-left:0px;
+    padding-bottom: 10px;
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+}
+table td, table th {
+    border:1px solid #000000;
+    padding:3px 7px 2px 7px;
+}
+table th {
+    text-align:center;
+    padding-top:5px;
+    padding-bottom:4px;
+    background-color:#000000;
+    color:#fff;
+}
+table tr.alt td {
+    color:#000;
+    background-color:#EAF2D3;
+}
+tr.critical {
+    color: white;
+    background-color: red;
+}
+</style>"
+$Title = "<span style='font-weight:bold;font-size:24pt'>CVE List for Windows 11 22H2 on " + $Month + "</span>"
+$Header = "<div id='title'>$Title</div>`n" +
+          "<div id='subtitle'>Report generated: $(Get-Date)</div>"
+
+$Report = $ProductName | Select CVE, FullProductName, Severity, Impact, @{Name='KBArticle'; Expression={($_.KBArticle.ID | Select-Object -Unique) -join ', '}}, @{Name='BaseScore'; Expression={$_.CvssScoreSet.Base}}, @{Name='TemporalScore'; Expression={$_.CvssScoreSet.Temporal}}, @{Name='Vector'; Expression={$_.CvssScoreSet.Vector}} | ConvertTo-Html -PreContent $Css -PostContent "</table><br>" -As Table -Fragment | ForEach-Object {
+    if($_ -match "<td.*?Critical.*?>") {
+        $_ -replace "<tr>", "<tr class='critical'>"
+    }
+    else {
+        $_
+    }
+}
+
+$message = @{
+    message = @{
+        subject      = "CVE List for Windows 11 22H2 on $Month"
+        body         = @{
+            contentType = "HTML"
+            content     = "$Header $Report"
+        }
+        toRecipients = @(
+            @{
+                emailAddress = @{
+                    address = "harri.rundberg@cinia.fi"
+                }
+            },
+            @{
+                emailAddress = @{
+                    address = "jesse.norring2@cinia.fi"
+                }
+            }
+        )
+    }
+    saveToSentItems = "false"
+} | ConvertTo-Json -Depth 4
+
+# Send email using Graph API
+$URLsend = "https://graph.microsoft.com/v1.0/users/$MailSender/sendMail"
+Invoke-RestMethod -Method POST -Uri $URLsend -Headers $headers -Body $message
+
+<#
+$ID = Get-MsrcCvrfDocument -ID $Month
+
+$ID.ProductTree.FullProductName
+
+ProductID Value                                                                                 
+--------- -----                                                                                 
+10049     Windows Server 2008 R2 for x64-based Systems Service Pack 1 (Server Core installation)
+10051     Windows Server 2008 R2 for x64-based Systems Service Pack 1                           
+10287     Windows Server 2008 for 32-bit Systems Service Pack 2 (Server Core installation)      
+10378     Windows Server 2012                                                                   
+10379     Windows Server 2012 (Server Core installation)                                        
+10407     Microsoft Outlook 2013 RT Service Pack 1                                              
+10483     Windows Server 2012 R2                                                                
+10543     Windows Server 2012 R2 (Server Core installation)                                     
+10601     Microsoft Office 2013 Service Pack 1 (32-bit editions)                                
+10602     Microsoft Office 2013 Service Pack 1 (64-bit editions)                                
+10603     Microsoft Office 2013 RT Service Pack 1                                               
+10611     Microsoft Office Web Apps Server 2013 Service Pack 1                                  
+10612     Microsoft SharePoint Foundation 2013 Service Pack 1                                   
+10654     Microsoft Excel 2013 Service Pack 1 (32-bit editions)                                 
+10655     Microsoft Excel 2013 Service Pack 1 (64-bit editions)                                 
+10656     Microsoft Excel 2013 RT Service Pack 1                                                
+10729     Windows 10 for 32-bit Systems                                                         
+10735     Windows 10 for x64-based Systems                                                      
+10739     Microsoft Excel 2016 (32-bit edition)                                                 
+10740     Microsoft Excel 2016 (64-bit edition)                                                 
+10753     Microsoft Office 2016 (32-bit edition)                                                
+10754     Microsoft Office 2016 (64-bit edition)                                                
+10765     Microsoft Outlook 2016 (32-bit edition)                                               
+10766     Microsoft Outlook 2016 (64-bit edition)                                               
+10810     Microsoft Outlook 2013 Service Pack 1 (32-bit editions)                               
+10811     Microsoft Outlook 2013 Service Pack 1 (64-bit editions)                               
+10816     Windows Server 2016                                                                   
+10852     Windows 10 Version 1607 for 32-bit Systems                                            
+10853     Windows 10 Version 1607 for x64-based Systems                                         
+10855     Windows Server 2016 (Server Core installation)                                        
+10950     Microsoft SharePoint Enterprise Server 2016                                           
+11099     Microsoft SharePoint Enterprise Server 2013 Service Pack 1                            
+11568     Windows 10 Version 1809 for 32-bit Systems                                            
+11569     Windows 10 Version 1809 for x64-based Systems                                         
+11570     Windows 10 Version 1809 for ARM64-based Systems                                       
+11571     Windows Server 2019                                                                   
+11572     Windows Server 2019 (Server Core installation)                                        
+11573     Microsoft Office 2019 for 32-bit editions                                             
+11574     Microsoft Office 2019 for 64-bit editions                                             
+11575     Microsoft Office 2019 for Mac                                                         
+11585     Microsoft SharePoint Server 2019                                                      
+11600     Microsoft Visual Studio 2017 version 15.9 (includes 15.0 - 15.8)                      
+11605     Microsoft Office Online Server                                                        
+11655     Microsoft Edge (Chromium-based)                                                       
+11664     Microsoft Dynamics 365 (on-premises) version 9.0                                      
+11726     OneDrive for Android                                                                  
+11762     Microsoft 365 Apps for Enterprise for 32-bit Systems                                  
+11763     Microsoft 365 Apps for Enterprise for 64-bit Systems                                  
+11800     Windows 10 Version 20H2 for x64-based Systems                                         
+11801     Windows 10 Version 20H2 for 32-bit Systems                                            
+11802     Windows 10 Version 20H2 for ARM64-based Systems                                       
+11902     Microsoft Malware Protection Engine                                                   
+11921     Microsoft Dynamics 365 (on-premises) version 9.1                                      
+11923     Windows Server 2022                                                                   
+11924     Windows Server 2022 (Server Core installation)                                        
+11926     Windows 11 version 21H2 for x64-based Systems                                         
+11927     Windows 11 version 21H2 for ARM64-based Systems                                       
+11929     Windows 10 Version 21H2 for 32-bit Systems                                            
+11930     Windows 10 Version 21H2 for ARM64-based Systems                                       
+11931     Windows 10 Version 21H2 for x64-based Systems                                         
+11935     Microsoft Visual Studio 2019 version 16.11 (includes 16.0 - 16.10)                    
+11951     Microsoft Office LTSC for Mac 2021                                                    
+11952     Microsoft Office LTSC 2021 for 64-bit editions                                        
+11953     Microsoft Office LTSC 2021 for 32-bit editions                                        
+11961     Microsoft SharePoint Server Subscription Edition                                      
+11969     Microsoft Visual Studio 2022 version 17.0                                             
+11987     Azure HDInsights                                                                      
+12051     Microsoft Visual Studio 2022 version 17.2                                             
+12085     Windows 11 Version 22H2 for ARM64-based Systems                                       
+12086     Windows 11 Version 22H2 for x64-based Systems                                         
+12097     Windows 10 Version 22H2 for x64-based Systems                                         
+12098     Windows 10 Version 22H2 for ARM64-based Systems                                       
+12099     Windows 10 Version 22H2 for 32-bit Systems                                            
+12129     Microsoft Visual Studio 2022 version 17.4                                             
+12137     CBL Mariner 1.0 x64                                                                   
+12138     CBL Mariner 1.0 ARM                                                                   
+12139     CBL Mariner 2.0 x64                                                                   
+12140     CBL Mariner 2.0 ARM                                                                   
+12142     Microsoft Edge (Chromium-based) Extended Stable                                       
+12155     Microsoft Office for Android                                                          
+12156     Microsoft Office for Universal                                                        
+12167     Microsoft Visual Studio 2022 version 17.5                                             
+12169     OneDrive for MacOS Installer                                                          
+12170     OneDrive for iOS                                                                      
+12171     Azure Service Fabric 9.1 for Windows                                                  
+12172     Azure Service Fabric 9.1 for Ubuntu                                                   
+12173     Snipping Tool                                                                         
+12174     Snip & Sketch for Windows 10                                                          
+9312      Windows Server 2008 for 32-bit Systems Service Pack 2                                 
+9318      Windows Server 2008 for x64-based Systems Service Pack 2                              
+9344      Windows Server 2008 for x64-based Systems Service Pack 2 (Server Core installation) 
+#>
