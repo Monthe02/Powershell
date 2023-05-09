@@ -1,0 +1,155 @@
+
+$clientID = "clientID"
+$clientSecret = "clientSecretValue"
+$tenantID = "tenantID"
+$LinkPrefix = "https://msrc.microsoft.com/update-guide/vulnerability/"
+$MailSender = "user.name@domain.com"
+
+# Connect to GRAPH API and get access token
+$tokenBody = @{
+    Grant_Type    = "client_credentials"
+    Scope         = "https://graph.microsoft.com/.default"
+    Client_Id     = $clientId
+    Client_Secret = $clientSecret
+}
+$tokenResponse = Invoke-RestMethod -Uri "https://login.microsoftonline.com/$tenantID/oauth2/v2.0/token" -Method POST -Body $tokenBody
+$headers = @{
+    "Authorization" = "Bearer $($tokenResponse.access_token)"
+    "Content-type"  = "application/json"
+}
+
+# Compose email message
+$Month = Get-Date -Format 'yyyy-MMM'
+#Month = '2023-May'
+#$ClientOS_Type = "Windows 11 Version 22H2 for x64-based Systems"
+$ClientOS_Types = @(
+    "Windows 10 Version 22H2 for x64-based Systems",
+    "Windows 11 Version 22H2 for x64-based Systems",
+    "Microsoft Edge (Chromium-based)",
+    "Microsoft 365 Apps for Enterprise for 64-bit Systems",
+    "Windows Server 2012 R2",
+    "Windows Server 2016",
+    "Windows Server 2019",
+    "Windows Server 2022"
+)
+
+$id = Get-MsrcCvrfDocument -ID $Month
+
+# Get critical & important
+# $ProductName = Get-MsrcCvrfAffectedSoftware -Vulnerability $id.Vulnerability -ProductTree $id.ProductTree | Where-Object { $_.Severity -in 'Critical', 'Important' -and ($_.FullProductName -in $ClientOS_Types) }
+
+# Get only critical 
+$ProductName = Get-MsrcCvrfAffectedSoftware -Vulnerability $id.Vulnerability -ProductTree $id.ProductTree | Where-Object { $_.Severity -eq 'Critical' -and $_.Importance -ne 'Important' -and ($_.FullProductName -in $ClientOS_Types) }
+
+$Css="<style>
+body {
+    font-family: cursive;
+    font-size: 14px;
+    color: #000000;
+    background: #FEFEFE;
+}
+#title{
+    color:#000000;
+    font-size: 30px;
+    font-weight: bold;
+    height: 50px;
+    margin-left: 0px;
+    padding-top: 10px;
+}
+
+#subtitle{
+    font-size: 16px;
+    margin-left:0px;
+    padding-bottom: 10px;
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+}
+table td, table th {
+    border:1px solid #000000;
+    padding:3px 7px 2px 7px;
+}
+table th {
+    text-align:center;
+    padding-top:5px;
+    padding-bottom:4px;
+    background-color:#000000;
+    color:#fff;
+}
+table tr.alt td {
+    color:#000;
+    background-color:#EAF2D3;
+}
+tr.critical {
+    color: white;
+    background-color: red;
+}
+a {
+    color: black;
+    text-decoration: underline;
+}
+</style>"
+
+$Title = "<span style='font-weight:bold;font-size:24pt'>Microsoft CVE List $Month</span>"
+$Header = "<div id='title'>$Title</div>`n" +
+          "<div id='subtitle'>Report generated: $(Get-Date) <br><br>" +
+          "<a href='https://msrc.microsoft.com/update-guide/vulnerability/'> CVE database link </a></div><br><br>" 
+
+<# With vector
+$Report = $ProductName | Select CVE, FullProductName, Severity, Impact, @{Name='KBArticle'; Expression={($_.KBArticle.ID | Select-Object -Unique) -join ', '}}, @{Name='BaseScore'; Expression={$_.CvssScoreSet.Base}}, @{Name='TemporalScore'; Expression={$_.CvssScoreSet.Temporal}}, @{Name='Link'; Expression={$LinkPrefix + $_.CVE}}, @{Name='Vector'; Expression={$_.CvssScoreSet.Vector}} | Sort-Object -Property @{Expression = "FullProductName"; Descending = $false}, @{Expression = "BaseScore"; Descending = $true} | ConvertTo-Html -PreContent $Css -PostContent "</table><br>" -As Table -Fragment | ForEach-Object {
+    if($_ -match "<td.*?Critical.*?>") {
+        $_ -replace "<tr>", "<tr class='critical'>"
+    }
+    else {
+        $_
+    }
+}
+#>
+
+# Without vector
+$Report = $ProductName | Select-Object CVE, FullProductName, Severity, Impact, @{Name='KBArticle'; Expression={($_.KBArticle.ID | Select-Object -Unique) -join ', '}}, @{Name='BaseScore'; Expression={$_.CvssScoreSet.Base}}, @{Name='TemporalScore'; Expression={$_.CvssScoreSet.Temporal}}, @{Name='Link'; Expression={$LinkPrefix + $_.CVE}} |
+    Sort-Object -Property @{Expression = "FullProductName"; Descending = $false}, @{Expression = "BaseScore"; Descending = $true} |
+    ConvertTo-Html -PreContent $Css -PostContent "</table><br>" -As Table -Fragment |
+    ForEach-Object {
+        if($_ -match "<td.*?Critical.*?>") {
+            $_ -replace "<tr>", "<tr class='critical'>"
+        }
+        else {
+            $_
+        }
+    }
+
+
+$message = @{
+    message = @{
+        subject      = "Microsoft CVE List on $Month"
+        body         = @{
+            contentType = "HTML"
+            content     = "$Header $Report"
+        }
+        toRecipients = @(
+            @{
+                emailAddress = @{
+                    address = "Recipient1@domain.com"
+                }
+            },
+            @{
+                emailAddress = @{
+                    address = "teams.channel@emea.teams.ms"
+                }
+            }
+                        @{
+                emailAddress = @{
+                    address = "Recipient2@domain.com"
+                }
+            }
+        )
+    }
+    saveToSentItems = "false"
+} | ConvertTo-Json -Depth 4
+
+# Send email using Graph API
+$URLsend = "https://graph.microsoft.com/v1.0/users/$MailSender/sendMail"
+Invoke-RestMethod -Method POST -Uri $URLsend -Headers $headers -Body $message
